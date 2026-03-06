@@ -12,7 +12,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="MedSafe AI",
-    page_icon="🏥",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -20,6 +20,10 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Local module imports
 # ---------------------------------------------------------------------------
+import json
+import datetime
+import ollama
+import streamlit as st
 from med_db import find_medicine, check_interaction, get_all_interactions, MEDICINES
 from ocr_utils import extract_text_from_image
 from symptom import analyze_symptoms, SYMPTOM_LIST
@@ -60,193 +64,32 @@ def query_llama(prompt: str, context: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 CUSTOM_CSS = """
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-/* ── Import Google Font ─────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
-/* ── Root variables ─────────────────────────────────────── */
-:root {
-    --primary: #0A6EBD;
-    --primary-light: #5DA7DB;
-    --primary-dark: #064A80;
-    --accent: #12B886;
-    --bg-main: #F0F4F8;
-    --bg-card: #FFFFFF;
-    --text-primary: #1A2332;
-    --text-secondary: #5A6B7F;
-    --border: #E2E8F0;
-    --safe: #12B886;
-    --safe-bg: #E6FCF5;
-    --caution: #F59F00;
-    --caution-bg: #FFF9DB;
-    --danger: #E03131;
-    --danger-bg: #FFF5F5;
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
-    --radius: 12px;
-}
-
-/* ── Global resets ──────────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
-
-.stApp {
-    background: var(--bg-main) !important;
-}
-
-/* ── Header bar ─────────────────────────────────────────── */
-.main-header {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: white;
-    padding: 1.5rem 2rem;
-    border-radius: var(--radius);
-    margin-bottom: 1.5rem;
-    box-shadow: var(--shadow-md);
-    text-align: center;
-}
-.main-header h1 {
-    margin: 0;
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-}
-.main-header p {
-    margin: 0.3rem 0 0;
-    font-size: 0.95rem;
-    opacity: 0.9;
-    font-weight: 300;
-}
-
-/* ── Tab styling ────────────────────────────────────────── */
-.stTabs [data-baseweb="tab-list"] {
-    background: var(--bg-card);
-    border-radius: var(--radius);
-    padding: 6px;
-    gap: 4px;
-    box-shadow: var(--shadow-sm);
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px;
-    font-weight: 500;
-    font-size: 0.85rem;
-    padding: 8px 16px;
-    color: var(--text-secondary);
-}
-.stTabs [aria-selected="true"] {
-    background: var(--primary) !important;
-    color: white !important;
-    font-weight: 600;
-}
-
-/* ── Card containers ────────────────────────────────────── */
-.card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow 0.2s ease;
-}
-.card:hover {
-    box-shadow: var(--shadow-md);
-}
-
-/* ── Severity badges ────────────────────────────────────── */
-.badge-safe {
-    display: inline-block;
-    background: var(--safe-bg);
-    color: var(--safe);
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    border: 1px solid var(--safe);
-}
-.badge-caution {
-    display: inline-block;
-    background: var(--caution-bg);
-    color: #B37800;
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    border: 1px solid var(--caution);
-}
-.badge-danger {
-    display: inline-block;
-    background: var(--danger-bg);
-    color: var(--danger);
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    border: 1px solid var(--danger);
-}
-
-/* ── Risk level cards ───────────────────────────────────── */
-.risk-low      { border-left: 5px solid var(--safe);   }
-.risk-moderate { border-left: 5px solid var(--caution); }
-.risk-high     { border-left: 5px solid #E8590C;       }
-.risk-critical { border-left: 5px solid var(--danger);  }
-
-/* ── Disclaimer box ─────────────────────────────────────── */
-.disclaimer {
-    background: #EDF2FF;
-    border: 1px solid #BAC8FF;
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 0.82rem;
-    color: #364FC7;
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-/* ── AI response box ────────────────────────────────────── */
-.ai-response {
-    background: linear-gradient(135deg, #F8F9FE 0%, #EDF2FF 100%);
-    border: 1px solid #D0D7FF;
-    border-radius: var(--radius);
-    padding: 1.2rem 1.5rem;
-    margin-top: 1rem;
-}
-.ai-response-header {
-    font-weight: 600;
-    color: var(--primary);
-    font-size: 0.9rem;
-    margin-bottom: 0.5rem;
-}
-
-/* ── Section label ──────────────────────────────────────── */
-.section-label {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: 1.05rem;
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-/* ── Timeline entry ─────────────────────────────────────── */
-.timeline-entry {
-    border-left: 3px solid var(--primary-light);
-    padding-left: 1rem;
-    margin-bottom: 1rem;
-}
-.timeline-time {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-/* ── Misc fixes ─────────────────────────────────────────── */
-.stMetric label { font-size: 0.85rem !important; }
-div[data-testid="stExpander"] {
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius) !important;
-}
+.main-header { background: linear-gradient(135deg, #0369A1 0%, #0C4A6E 100%); color: white; padding: 2.5rem 2rem; border-radius: 16px; margin-bottom: 2rem; box-shadow: 0 10px 15px rgba(0,0,0,0.1); text-align: center; }
+.main-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; font-family: 'Poppins', sans-serif; }
+.main-header p { margin: 0.5rem 0 0; font-size: 1rem; opacity: 0.95; }
+.card { background: white; border: 1px solid #E5E7EB; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.card:hover { box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+.badge-safe { display: inline-flex; align-items: center; gap: 6px; background: #ECFDF5; color: #10B981; padding: 6px 16px; border-radius: 20px; font-weight: 600; font-size: 0.8rem; border: 1.5px solid #10B981; }
+.badge-caution { display: inline-flex; align-items: center; gap: 6px; background: #FFFBEB; color: #B45309; padding: 6px 16px; border-radius: 20px; font-weight: 600; font-size: 0.8rem; border: 1.5px solid #F59E0B; }
+.badge-danger { display: inline-flex; align-items: center; gap: 6px; background: #FEF2F2; color: #EF4444; padding: 6px 16px; border-radius: 20px; font-weight: 600; font-size: 0.8rem; border: 1.5px solid #EF4444; }
+.risk-low { border-left: 5px solid #10B981; background: linear-gradient(90deg, #ECFDF5 0%, transparent 100%); padding: 1.5rem; border-radius: 8px; }
+.risk-moderate { border-left: 5px solid #F59E0B; background: linear-gradient(90deg, #FFFBEB 0%, transparent 100%); padding: 1.5rem; border-radius: 8px; }
+.risk-high { border-left: 5px solid #EA580C; background: linear-gradient(90deg, #FFF7ED 0%, transparent 100%); padding: 1.5rem; border-radius: 8px; }
+.risk-critical { border-left: 5px solid #EF4444; background: linear-gradient(90deg, #FEF2F2 0%, transparent 100%); padding: 1.5rem; border-radius: 8px; }
+.disclaimer { background: linear-gradient(135deg, #E0F2FE 0%, rgba(56, 189, 248, 0.05) 100%); border: 1.5px solid #BAE6FD; border-radius: 12px; padding: 1rem 1.25rem; font-size: 0.85rem; color: #1e40af; margin: 0.75rem 0 1rem 0; line-height: 1.6; }
+.ai-response { background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%); border: 1.5px solid #BAE6FD; border-radius: 12px; padding: 1.5rem; margin-top: 1.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+.ai-response-header { font-weight: 700; color: #0C4A6E; font-size: 0.9rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 6px; }
+.section-label { font-weight: 700; color: #111827; font-size: 1.3rem; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 2px solid #E5E7EB; font-family: 'Poppins', sans-serif; }
+.timeline-entry { border-left: 3px solid #38BDF8; padding-left: 1.25rem; margin-bottom: 1.5rem; background: white; padding: 1rem; border-radius: 8px; border: 1px solid #E5E7EB; }
+.timeline-entry:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-color: #38BDF8; }
+.timeline-time { font-size: 0.75rem; color: #9CA3AF; font-weight: 600; }
+img { border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+h1, h2, h3, h4, h5, h6 { font-family: 'Poppins', sans-serif !important; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; }
 </style>
 """
 
@@ -259,8 +102,8 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 st.markdown(
     """
     <div class="main-header">
-        <h1>🏥 MedSafe AI</h1>
-        <p>AI-Assisted Medicine Safety &amp; Health Guidance — Educational Use Only</p>
+        <h1><i class="fas fa-heartbeat" style="margin-right: 12px; color: #FEF2F2;"></i>MedSafe AI</h1>
+        <p><i class="fas fa-shield-alt" style="margin-right: 6px;"></i>AI-Assisted Medicine Safety &amp; Health Guidance — Educational Use Only</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -281,11 +124,11 @@ if "side_effect_log" not in st.session_state:
 def severity_badge(severity: str) -> str:
     s = severity.lower()
     if s == "safe":
-        return '<span class="badge-safe">✓ Safe</span>'
+        return '<span class="badge-safe"><i class="fas fa-check-circle"></i> Safe</span>'
     elif s == "caution":
-        return '<span class="badge-caution">⚠ Caution</span>'
+        return '<span class="badge-caution"><i class="fas fa-exclamation-triangle"></i> Caution</span>'
     else:
-        return '<span class="badge-danger">✕ Dangerous</span>'
+        return '<span class="badge-danger"><i class="fas fa-times-circle"></i> Dangerous</span>'
 
 
 def risk_card_class(level: str) -> str:
@@ -300,7 +143,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📋 Prescription OCR",
     "🩺 Symptom Solver",
     "📝 Side-Effect Monitor",
-    "🚨 Emergency Risk",
+    "⚠️ Emergency Risk",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -308,9 +151,9 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ═══════════════════════════════════════════════════════════════════════════
 
 with tab1:
-    st.markdown('<div class="section-label">💊 Medicine Interaction Checker</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label"><i class="fas fa-pills"></i> Medicine Interaction Checker</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="disclaimer">ℹ️ This tool provides <b>educational</b> information about potential drug interactions. '
+        '<div class="disclaimer"><i class="fas fa-info-circle" style="margin-right: 8px;"></i>This tool provides <b>educational</b> information about potential drug interactions. '
         'It is <b>not</b> a substitute for professional medical advice. Always consult your pharmacist or doctor.</div>',
         unsafe_allow_html=True,
     )
@@ -343,7 +186,13 @@ with tab1:
 
             if len(matched) >= 2:
                 st.markdown("---")
-                st.markdown("**Matched medicines:** " + ", ".join(f"`{m.title()}`" for m in matched))
+                st.markdown(
+                    "<div style='padding:1rem;background:var(--primary-ultra-light);border:1.5px solid var(--primary-light);border-radius:var(--radius-md);margin-bottom:1.5rem;'>"
+                    "✅"
+                    "<strong>Matched medicines:</strong> " + ", ".join(f"`{m.title()}`" for m in matched) +
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
                 interactions = get_all_interactions(matched)
                 if interactions:
@@ -352,7 +201,7 @@ with tab1:
                             f'<div class="card">'
                             f'<strong>{ix["drug_a"]}</strong> + <strong>{ix["drug_b"]}</strong> '
                             f'&nbsp;{severity_badge(ix["severity"])}'
-                            f'<br><span style="color:var(--text-secondary);font-size:0.9rem;">{ix["reason"]}</span>'
+                            f'<br><span style="color:var(--text-secondary);font-size:0.9rem;"><i class="fas fa-info-circle" style="margin-right:6px;"></i>{ix["reason"]}</span>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -374,7 +223,7 @@ with tab1:
 
                 st.markdown(
                     f'<div class="ai-response">'
-                    f'<div class="ai-response-header">🤖 AI Safety Summary</div>'
+                    f'<div class="ai-response-header"><i class="fas fa-robot"></i> AI Safety Summary</div>'
                     f'{ai_text}'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -385,9 +234,9 @@ with tab1:
 # ═══════════════════════════════════════════════════════════════════════════
 
 with tab2:
-    st.markdown('<div class="section-label">📋 Prescription OCR + AI Parsing</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label"><i class="fas fa-file-prescription"></i> Prescription OCR + AI Parsing</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="disclaimer">ℹ️ Upload a prescription image for automated text extraction and AI parsing. '
+        '<div class="disclaimer"><i class="fas fa-info-circle" style="margin-right: 8px;"></i>Upload a prescription image for automated text extraction and AI parsing. '
         'Results are for <b>reference only</b>. Always verify with your pharmacist.</div>',
         unsafe_allow_html=True,
     )
@@ -399,10 +248,10 @@ with tab2:
         image = Image.open(uploaded)
         st.image(image, caption="Uploaded Prescription", use_container_width=True)
 
-        with st.spinner("🔍 Running OCR…"):
+        with st.spinner("⏳ Running OCR…"):
             raw_text = extract_text_from_image(image)
 
-        with st.expander("📄 Raw OCR Text", expanded=False):
+        with st.expander("🔍 Raw OCR Text", expanded=False):
             st.code(raw_text, language="text")
 
         if raw_text.startswith("[ERROR]"):
@@ -420,7 +269,7 @@ with tab2:
 
             st.markdown(
                 f'<div class="ai-response">'
-                f'<div class="ai-response-header">🤖 AI-Parsed Prescription</div></div>',
+                f'<div class="ai-response-header"><i class="fas fa-comments"></i> AI-Parsed Prescription</div></div>',
                 unsafe_allow_html=True,
             )
 
@@ -460,13 +309,13 @@ with tab2:
                 st.info("AI could not extract structured data. Showing raw AI response:")
                 st.markdown(ai_parsed)
 
-            with st.expander("🔎 Raw AI JSON Response"):
+            with st.expander("🔍 Raw AI JSON Response"):
                 st.code(ai_parsed, language="json")
 
             if st.session_state.extracted_medicines:
                 st.markdown("---")
-                st.info(
-                    f"**Medicines saved to session:** "
+                st.success(
+                    f"✅ **Medicines saved to session:** "
                     f"{', '.join(m.title() for m in st.session_state.extracted_medicines)} "
                     f"— available across all tabs."
                 )
@@ -476,9 +325,9 @@ with tab2:
 # ═══════════════════════════════════════════════════════════════════════════
 
 with tab3:
-    st.markdown('<div class="section-label">🩺 Symptom & Doubt Solver</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label"><i class="fas fa-stethoscope"></i> Symptom & Doubt Solver</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="disclaimer">⚠️ <b>This is NOT a medical diagnosis.</b> This tool provides general educational '
+        '<div class="disclaimer"><i class="fas fa-exclamation-triangle" style="margin-right: 8px; color: #EA580C;"></i><b>This is NOT a medical diagnosis.</b> This tool provides general educational '
         'information only. Always consult a qualified healthcare professional for medical advice.</div>',
         unsafe_allow_html=True,
     )
@@ -514,22 +363,24 @@ with tab3:
             results = analyze_symptoms(all_symptoms)
 
             if results:
-                st.markdown("### 📋 Possible Conditions")
+                st.markdown("### ✅ Possible Conditions")
                 for r in results:
                     sev = r["severity"]
                     sev_color = {"severe": "var(--danger)", "moderate": "var(--caution)", "mild": "var(--safe)"}.get(sev, "gray")
+                    sev_icon = {"severe": "fas fa-exclamation-triangle", "moderate": "fas fa-exclamation-circle", "mild": "fas fa-info-circle"}.get(sev, "fas fa-circle")
                     st.markdown(
                         f'<div class="card">'
-                        f'<span style="color:{sev_color};font-weight:600;text-transform:uppercase;font-size:0.75rem;">{sev}</span><br>'
+                        f'<span style="color:{sev_color};font-weight:600;text-transform:uppercase;font-size:0.75rem;">'
+                        f'<i class="{sev_icon}" style="margin-right:4px;"></i>{sev}</span><br>'
                         f'<strong>{r["condition"]}</strong> '
                         f'<small style="color:var(--text-secondary);">— related to: {r["symptom"]}</small><br>'
                         f'<span style="font-size:0.9rem;">{r["description"]}</span><br>'
-                        f'<span style="font-size:0.85rem;color:var(--primary);">💡 {r["recommended_action"]}</span>'
+                        f'<span style="font-size:0.85rem;color:var(--primary);"><i class="fas fa-lightbulb" style="margin-right:4px;"></i>{r["recommended_action"]}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
             else:
-                st.info("No matching conditions found for the given symptoms in our database.")
+                st.info("ℹ️ No matching conditions found for the given symptoms in our database.")
 
             # AI enhanced response
             with st.spinner("🤖 Getting personalized guidance from AI…"):
@@ -548,7 +399,7 @@ with tab3:
             with st.expander("🤖 AI Health Guidance", expanded=True):
                 st.markdown(ai_text)
                 st.markdown(
-                    '<div class="disclaimer">🔔 Reminder: This AI-generated guidance is for <b>educational purposes only</b>. '
+                    '<div class="disclaimer"><i class="fas fa-bell" style="margin-right: 8px; color: #0369A1;"></i>Reminder: This AI-generated guidance is for <b>educational purposes only</b>. '
                     'It is not a diagnosis. Please consult a healthcare professional.</div>',
                     unsafe_allow_html=True,
                 )
@@ -558,9 +409,9 @@ with tab3:
 # ═══════════════════════════════════════════════════════════════════════════
 
 with tab4:
-    st.markdown('<div class="section-label">📝 Side-Effect Monitor & Logger</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label"><i class="fas fa-clipboard-list"></i> Side-Effect Monitor & Logger</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="disclaimer">ℹ️ Log and track medication side effects over time. AI analysis is '
+        '<div class="disclaimer"><i class="fas fa-info-circle" style="margin-right: 8px;"></i>Log and track medication side effects over time. AI analysis is '
         '<b>educational only</b> — report serious side effects to your doctor.</div>',
         unsafe_allow_html=True,
     )
@@ -585,7 +436,7 @@ with tab4:
                 height=100,
             )
 
-        submitted = st.form_submit_button("📝 Log & Analyze", type="primary")
+        submitted = st.form_submit_button("✅ Log & Analyze", type="primary")
 
     if submitted:
         # Validation
@@ -637,25 +488,25 @@ with tab4:
         for i, entry in enumerate(reversed(st.session_state.side_effect_log)):
             st.markdown(
                 f'<div class="timeline-entry">'
-                f'<div class="timeline-time">🕐 {entry["timestamp"]}</div>'
+                f'<div class="timeline-time"><i class="fas fa-clock" style="margin-right: 6px;"></i>{entry["timestamp"]}</div>'
                 f'<strong>{entry["medicine"]}</strong> ({entry["dosage"]})<br>'
                 f'<span style="font-size:0.9rem;color:var(--text-secondary);">{entry["description"]}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
-            with st.expander(f"🤖 AI Analysis — Entry {len(st.session_state.side_effect_log) - i}"):
+            with st.expander(f"🧠 AI Analysis — Entry {len(st.session_state.side_effect_log) - i}"):
                 st.markdown(entry.get("ai_analysis", "No analysis available."))
     else:
-        st.info("No side effects logged yet. Use the form above to log your first entry.")
+        st.info("ℹ️ No side effects logged yet. Use the form above to log your first entry.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 5 — Emergency Risk Predictor
 # ═══════════════════════════════════════════════════════════════════════════
 
 with tab5:
-    st.markdown('<div class="section-label">🚨 Emergency Risk Predictor</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label"><i class="fas fa-exclamation-circle"></i> Emergency Risk Predictor</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="disclaimer">⚠️ This is an <b>educational risk estimation tool</b>. It does NOT replace '
+        '<div class="disclaimer"><i class="fas fa-alert" style="margin-right: 8px; color: #EA580C;"></i>This is an <b>educational risk estimation tool</b>. It does NOT replace '
         'professional emergency assessment. If you feel unwell, <b>call emergency services immediately</b>.</div>',
         unsafe_allow_html=True,
     )
@@ -671,7 +522,7 @@ with tab5:
     with col3:
         v_spo2 = st.number_input("SpO₂ (%)", min_value=50.0, max_value=100.0, value=98.0, step=0.5, key="v_spo2")
 
-    if st.button("🔍 Calculate Risk", key="btn_risk", type="primary"):
+    if st.button("📊 Calculate Risk", key="btn_risk", type="primary"):
         result = calculate_risk(
             heart_rate=v_hr,
             systolic=v_sbp,
@@ -712,9 +563,9 @@ with tab5:
 
         # Contributing factors
         if factors:
-            st.markdown("**Contributing Risk Factors:**")
+            st.markdown("**⚠️ Contributing Risk Factors:**")
             for f in factors:
-                st.markdown(f"- ⚠️ {f}")
+                st.markdown(f"- 🚨 {f}")
         else:
             st.success("✅ All vitals are within normal ranges.")
 
@@ -738,7 +589,7 @@ with tab5:
 
         st.markdown(
             f'<div class="ai-response">'
-            f'<div class="ai-response-header">🤖 AI Risk Explanation</div>'
+            f'<div class="ai-response-header"><i class="fas fa-robot"></i> AI Analysis</div>'
             f'{ai_text}'
             f'</div>',
             unsafe_allow_html=True,
@@ -749,10 +600,11 @@ with tab5:
 # ---------------------------------------------------------------------------
 st.markdown("---")
 st.markdown(
-    '<div style="text-align:center;color:var(--text-secondary);font-size:0.8rem;padding:1rem 0;">'
-    '🏥 MedSafe AI — Educational Healthcare Safety Tool<br>'
-    'All AI outputs are for <b>educational purposes only</b> and do not constitute medical advice.<br>'
-    'Always consult a qualified healthcare professional for medical decisions.'
+    '<div style="text-align:center;color:var(--text-secondary);font-size:0.85rem;padding:2rem 1rem;background:var(--bg-card);border-radius:var(--radius-md);border:1px solid var(--border);margin-top:2rem;">'
+    '<i class="fas fa-hospital-alt" style="margin-right: 8px; color: var(--primary); font-size: 1.2rem;"></i><br>'
+    '<strong style="color:var(--text-primary);font-size:0.9rem;">MedSafe AI — Educational Healthcare Safety Tool</strong><br>'
+    '<span style="margin-top:0.5rem; display:block; line-height: 1.6;">All AI outputs are for <b>educational purposes only</b> and do not constitute medical advice.<br>'
+    'Always consult a qualified healthcare professional for medical decisions.</span>'
     '</div>',
     unsafe_allow_html=True,
 )
